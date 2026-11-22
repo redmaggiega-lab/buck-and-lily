@@ -95,7 +95,7 @@ h2{font-weight:normal;font-size:clamp(32px,9vw,52px);margin:10px 0 0}
 .main:active{transform:scale(.97)}
 .main.ghost{background:transparent;color:#f3e7d3;border:1px solid rgba(243,231,211,.4);margin-top:12px;font-size:16px;padding:10px 28px}
 .main[hidden]{display:none}
-.ver{position:absolute;left:0;right:0;bottom:max(16px,env(safe-area-inset-bottom));margin:0;font-size:14px;color:#8f7d86;line-height:1.5}
+.ver{position:absolute;left:0;right:0;cursor:default;-webkit-tap-highlight-color:transparent;bottom:max(16px,env(safe-area-inset-bottom));margin:0;font-size:14px;color:#8f7d86;line-height:1.5}
 .ver b{font-weight:normal;color:#e07b39}
 @media (orientation:landscape) and (max-height:500px){
   .btn{width:64px;height:64px;font-size:22px}
@@ -104,6 +104,26 @@ h2{font-weight:normal;font-size:clamp(32px,9vw,52px);margin:10px 0 0}
   .rpanel{top:max(12px,env(safe-area-inset-top))}
   #txt{font-size:17px}
 }
+#dev{position:fixed;top:max(10px,env(safe-area-inset-top));left:10px;right:64px;display:none;gap:6px;flex-wrap:wrap;z-index:6}
+body.creator #dev{display:flex}
+#dev button{background:rgba(20,14,22,.78);color:#f3e7d3;border:1px solid rgba(224,123,57,.6);border-radius:14px;padding:6px 11px;font-size:13px}
+#dev button.on{background:#e07b39;color:#1a0f0c}
+body.creator #hint, body.creator #count{top:max(56px,calc(env(safe-area-inset-top) + 46px))}
+body.creator #box, body.creator .rpanel{top:max(58px,calc(env(safe-area-inset-top) + 48px))}
+#pw{position:fixed;inset:0;background:rgba(8,5,12,.85);display:none;align-items:center;justify-content:center;z-index:8}
+#pw.on{display:flex}
+.pwbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(300px,82vw)}
+.pwbox.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
+#pwIn{width:100%;box-sizing:border-box;font:inherit;font-size:18px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:var(--ink);-webkit-user-select:text;user-select:text}
+.pwrow{display:flex;gap:10px;margin-top:12px}
+.pwrow button{flex:1;font-size:16px;padding:10px;border-radius:10px;border:1px solid var(--line);background:none;color:var(--ink)}
+#pwOk{background:#e07b39;color:#1a0f0c;border:0}
+#scenes{position:fixed;inset:0;background:rgba(8,5,12,.82);display:none;align-items:center;justify-content:center;z-index:7}
+#scenes.on{display:flex}
+#scenes .list{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;width:min(340px,86vw);max-height:80vh;overflow:auto;touch-action:pan-y}
+#scenes h3{margin:4px 6px 8px;font-weight:normal;font-style:italic;color:var(--ember)}
+#scenes .list button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--ink);font-size:17px;padding:11px 6px}
 @media (prefers-reduced-motion:reduce){.screen,#box,#hint{transition:none}}
 </style>
 </head>
@@ -125,6 +145,21 @@ h2{font-weight:normal;font-size:clamp(32px,9vw,52px);margin:10px 0 0}
 </div>
 
 <div id="bub"><div id="bwho"></div><div id="btxt"><span id="bs"></span><span id="bu" class="unrev"></span></div><div id="bmore">tap</div></div>
+
+<div id="dev">
+  <button id="dSpeed">Fast walk</button>
+  <button id="dSkip">Skip text</button>
+  <button id="dScenes">Scenes</button>
+  <button id="dExit">Exit</button>
+</div>
+<div id="scenes"><div class="list"><h3>Jump to a scene</h3><div id="sceneList"></div></div></div>
+
+<div id="pw">
+  <div class="pwbox">
+    <input id="pwIn" type="password" placeholder="Password" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="pwrow"><button id="pwCancel">Cancel</button><button id="pwOk">Enter</button></div>
+  </div>
+</div>
 
 <div id="rescue">
   <div class="rpanel">
@@ -398,7 +433,7 @@ function placeBubble(){
   const L = S.dlg.lines[S.dlg.i], sp = L.s, GY = groundY(), cam = S.cam;
   const [x, y] = speakerPos(sp, GY);
   const bw = bb.offsetWidth, bh = bb.offsetHeight;
-  const left = clamp(x - bw/2, 10, W - bw - 10), top = Math.max(W > H ? 10 : 66, y - bh - 14);
+  const left = clamp(x - bw/2, 10, W - bw - 10), top = Math.max(CREATOR ? 60 : (W > H ? 10 : 66), y - bh - 14);
   bb.style.transform = `translate(${left}px,${top}px)`;
   bb.style.setProperty('--tx', clamp(x - left, 18, bw - 18) + 'px');
 }
@@ -425,7 +460,8 @@ function startRescue(){
 function updRescue(){ $('rmsg').textContent = S.rescue.msg; $('rfill').style.width = S.rescue.p + '%'; }
 function rescueTap(){
   const r = S.rescue, now = performance.now();
-  if (now - r.last < 200){
+  if (CREATOR){ r.p = Math.min(100, r.p + 25); r.msg = 'Quick rescue'; sfx('rustle'); }
+  else if (now - r.last < 200){
     r.p = Math.max(0, r.p - 6);
     r.msg = "Too fast. She flinches away from you.";
     S.lily.shake = 7; sfx('yelp');
@@ -448,8 +484,8 @@ function tap(){ if (S.rescue) rescueTap(); else if (S.dlg) advance(); }
 
 /* ---------- version ---------- */
 // Change these two lines every time you update the game.
-const VERSION = 9;
-const WHATS_NEW = "Calmer sounds, neater bramble, stream is a wall now";
+const VERSION = 11;
+const WHATS_NEW = "Small fixes";
 
 (function showVersion(){
   let seen = null;
@@ -465,9 +501,88 @@ document.addEventListener('visibilitychange', () => {
   if (hiddenAt && Date.now() - hiddenAt > 10000) location.reload();
 });
 
+/* ---------- creator mode ---------- */
+let CREATOR = false, FAST = false;
+const SCENES = [
+  {name:'Morning at the kennel', x:300,  upto:'start'},
+  {name:'Old Tess',              x:480,  upto:'tess'},
+  {name:'The fence',             x:1060, upto:'fence'},
+  {name:'The stream',            x:1660, upto:'stream'},
+  {name:'The cry',               x:2420, upto:'cry'},
+  {name:'The bramble',           x:2850, upto:'bramble'},
+  {name:'Lily’s story',          x:3480, upto:'walk',    lily:'follow'},
+  {name:'Butterflies',           x:3700, upto:'play',    lily:'follow', bfly:true},
+  {name:'The whistle',           x:4560, upto:'whistle', lily:'follow', caught:5},
+  {name:'Walk home',             x:3300, upto:'fur',     lily:'gone', home:true},
+  {name:'Old Tess at night',     x:780,  upto:'end',     lily:'gone', home:true},
+];
+function clearUI(){
+  ['box','bub','rescue','scenes','title','end','card'].forEach(id => $(id).classList.remove('on'));
+  $('ctrl').classList.remove('hide');
+}
+function jumpTo(i){
+  const sc = SCENES[i];
+  reset(); clearUI();
+  CREATOR = true; document.body.classList.add('creator');
+  const idx = BEATS.findIndex(b => b.id === sc.upto);
+  BEATS.slice(0, idx).forEach(b => S.done.add(b.id));
+  S.buck.x = sc.x; S.buck.f = sc.home ? -1 : 1;
+  if (sc.lily === 'follow'){ S.lily.state = 'follow'; S.lily.x = sc.x - 58; }
+  if (sc.lily === 'gone'){ S.lily.state = 'gone'; S.lily.alpha = 0; }
+  if (sc.bfly) S.bfly = true;
+  if (sc.caught){ S.bfly = true; S.caught = sc.caught; }
+  S.jumpHinted = S.streamHinted = true;
+  S.phase = sc.home ? 'home' : 'play';
+  S.day = sc.home ? 0.84 + 0.16*clamp((5000 - sc.x)/4300, 0, 1) : 0.8*clamp((sc.x - 300)/4650, 0, 1);
+  S.cam = clamp(S.buck.x - W*0.42, 0, 5400 - W);
+  hint('Creator mode: ' + sc.name);
+}
+function skipText(){
+  const d = S.dlg; if (!d) return;
+  while (S.dlg === d){ d.c = 1e9; advance(); }
+}
+function exitCreator(){
+  CREATOR = false; document.body.classList.remove('creator');
+  reset(); clearUI(); $('title').classList.add('on'); refreshTitle();
+}
+(function buildScenes(){
+  SCENES.forEach((sc, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = (i + 1) + '. ' + sc.name;
+    btn.addEventListener('click', () => jumpTo(i));
+    $('sceneList').appendChild(btn);
+  });
+})();
+// Secret way in: tap the version text at the bottom of the menu 5 times quickly.
+// Change the password here:
+const CREATOR_PASSWORD = "dogfox";
+let verTaps = 0, verTimer = 0;
+$('ver').addEventListener('click', () => {
+  verTaps++; clearTimeout(verTimer);
+  verTimer = setTimeout(() => verTaps = 0, 2000);
+  if (verTaps >= 5){ verTaps = 0; $('pwIn').value = ''; $('pw').classList.add('on'); setTimeout(() => $('pwIn').focus(), 50); }
+});
+function tryPassword(){
+  if ($('pwIn').value.trim().toLowerCase() === CREATOR_PASSWORD.toLowerCase()){
+    $('pw').classList.remove('on'); $('pwIn').blur(); audioInit(); jumpTo(0);
+  } else {
+    const b = document.querySelector('.pwbox'); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
+    $('pwIn').value = '';
+  }
+}
+$('pwOk').addEventListener('click', tryPassword);
+$('pwIn').addEventListener('keydown', e => { if (e.key === 'Enter') tryPassword(); });
+$('pwCancel').addEventListener('click', () => { $('pw').classList.remove('on'); $('pwIn').blur(); });
+$('dSpeed').addEventListener('click', () => { FAST = !FAST; $('dSpeed').classList.toggle('on', FAST); });
+$('dSkip').addEventListener('click', skipText);
+$('dScenes').addEventListener('click', () => $('scenes').classList.add('on'));
+$('dExit').addEventListener('click', exitCreator);
+$('scenes').addEventListener('click', e => { if (e.target.id === 'scenes') $('scenes').classList.remove('on'); });
+
 /* ---------- saving ---------- */
 const SAVE_KEY = 'buckLily.save.v1';
 function saveGame(){
+  if (CREATOR) return;
   try {
     const b = S.buck, l = S.lily;
     localStorage.setItem(SAVE_KEY, JSON.stringify({
@@ -492,6 +607,7 @@ function playCard(then){
   setTimeout(()=>{ $('card').classList.remove('on'); setTimeout(then, 1000); }, 3400);
 }
 function continueGame(){
+  CREATOR = false; document.body.classList.remove('creator');
   const d = loadSave(); if (!d) return startChapter();
   reset();
   S.buck.x = d.x; S.buck.f = d.f; S.day = d.day; S.done = new Set(d.done);
@@ -503,11 +619,12 @@ function continueGame(){
 document.addEventListener('visibilitychange', () => { if (document.hidden && isFree()) saveGame(); });
 
 function startChapter(){
+  CREATOR = false; document.body.classList.remove('creator');
   reset(); clearSave();
   $('title').classList.remove('on'); $('end').classList.remove('on');
   playCard(()=>{ S.phase = 'play'; });
 }
-function endChapter(){ S.phase = 'end'; clearSave(); try { localStorage.setItem('buckLily.ch1done','1'); } catch(e){} setTimeout(()=>$('end').classList.add('on'), 600); }
+function endChapter(){ S.phase = 'end'; if (!CREATOR){ clearSave(); try { localStorage.setItem('buckLily.ch1done','1'); } catch(e){} } setTimeout(()=>$('end').classList.add('on'), 600); }
 
 /* ---------- input ---------- */
 function bindHold(el,k){
@@ -631,7 +748,7 @@ function update(dt){
   const dir = free ? (S.keys.r?1:0) - (S.keys.l?1:0) : 0;
   b.moving = !!dir; if (dir) b.f = dir;
   const ox = b.x;
-  let nx = clamp(b.x + dir*175*dt, 250, l.state==='trapped' ? 2900 : 5000);
+  let nx = clamp(b.x + dir*175*(CREATOR && FAST ? 3 : 1)*dt, 250, l.state==='trapped' ? 2900 : 5000);
   for (const o of OBST) if (b.h < o.h - 1 && Math.abs(nx - o.x) < 46 && Math.abs(ox - o.x) >= 46) nx = ox;
   const WL = 1774, WR = 1886;   // stream banks
   if (b.h < 1 && nx > WL && nx < WR && (ox <= WL || ox >= WR)){
@@ -715,7 +832,7 @@ function update(dt){
 
   if (S.dlg){
     const full = textOf(S.dlg.lines[S.dlg.i]);
-    if (S.dlg.c < full.length){ S.dlg.c = Math.min(full.length, S.dlg.c + dt*42); renderBox(); }
+    if (S.dlg.c < full.length){ S.dlg.c = CREATOR ? full.length : Math.min(full.length, S.dlg.c + dt*42); renderBox(); }
   }
 
   if (free){ S.saveT = (S.saveT||0) + dt; if (S.saveT > 2){ S.saveT = 0; saveGame(); } }
