@@ -376,7 +376,7 @@ function reset(){
     buck:{x:300,f:1,t:0,moving:false,h:0,vh:0},
     lily:{x:3000,f:-1,t:0,state:'trapped',alpha:1,shake:0,moving:false},
     cam:0, day:0, done:new Set(), dlg:null, rescue:null,
-    keys:{l:false,r:false}, parts:[], caught:0, bfly:false, flies:[], jumpHinted:false, mood:0.2, moodHold:null, hearts:[], petals:[], rain:[], heartT:0, still:0,
+    keys:{l:false,r:false}, parts:[], caught:0, bfly:false, flies:[], jumpHinted:false, mood:0.2, moodHold:null, hearts:[], petals:[], rain:[], heartT:0, still:0, drops:[], ripples:[], bushShake:0, struggleT:1, rainS:0,
   };
   S.cam = clamp(S.buck.x - W*0.42, 0, 5400 - W);
 }
@@ -460,13 +460,13 @@ function startRescue(){
 function updRescue(){ $('rmsg').textContent = S.rescue.msg; $('rfill').style.width = S.rescue.p + '%'; }
 function rescueTap(){
   const r = S.rescue, now = performance.now();
-  if (CREATOR){ r.p = Math.min(100, r.p + 25); r.msg = 'Quick rescue'; sfx('rustle'); }
+  if (CREATOR){ r.p = Math.min(100, r.p + 25); r.msg = 'Quick rescue'; S.bushShake = 0.9; sfx('rustle'); }
   else if (now - r.last < 200){
     r.p = Math.max(0, r.p - 6);
     r.msg = "Too fast. She flinches away from you.";
-    S.lily.shake = 7; sfx('yelp');
+    S.lily.shake = 7; S.bushShake = 1.4; sfx('yelp');
   } else {
-    r.p = Math.min(100, r.p + 8); sfx('rustle');
+    r.p = Math.min(100, r.p + 8); S.bushShake = 0.9; sfx('rustle');
     r.msg = r.p < 40 ? "Gently…" : r.p < 80 ? "The thorns are giving way…" : "Almost…";
   }
   r.last = now; updRescue();
@@ -484,8 +484,8 @@ function tap(){ if (S.rescue) rescueTap(); else if (S.dlg) advance(); }
 
 /* ---------- version ---------- */
 // Change these two lines every time you update the game.
-const VERSION = 11;
-const WHATS_NEW = "Small fixes";
+const VERSION = 12;
+const WHATS_NEW = "Splashy stream, prettier bramble and logs, softer rain";
 
 (function showVersion(){
   let seen = null;
@@ -685,7 +685,6 @@ function audioInit(){
   };
   A.wind = loop('lowpass', 400, 0.5);
   A.water = loop('bandpass', 1600, 0.8);
-  A.rainG = loop('highpass', 2200, 0.3);
   A.next = C.currentTime + 0.2; A.step = 0; A.cricketT = 0;
 }
 function env(o, g, t0, vol, att, dur){
@@ -708,6 +707,7 @@ function sfx(n){
   if (n==='jump') noiseHit(t, 0.2, 0.035, 'lowpass', 900);            // a soft little breath
   if (n==='catch'){ tone(880, t, 0.6, {vol:0.05, att:0.02}); tone(1320, t+0.08, 0.7, {vol:0.035, att:0.02}); }
   if (n==='rustle') noiseHit(t, 0.15, 0.07, 'bandpass', 1800);
+  if (n==='rustleSoft') noiseHit(t, 0.3, 0.03, 'bandpass', 2200);
   if (n==='yelp') tone(900, t, 0.2, {type:'sine', vol:0.05, slide:650});
   if (n==='laugh') for (let i=0; i<3; i++) tone(1100 + i*60, t + i*0.1, 0.09, {vol:0.04, slide:1350});
   if (n==='whistle'){ const w = (s,d) => tone(2100, t+s, d, {vol:0.06, att:0.05}); w(0.3,1.1); w(1.6,0.22); w(1.95,0.22); }
@@ -718,7 +718,6 @@ function audioTick(dt){
   const playing = S.phase !== 'title';
   A.wind.gain.setTargetAtTime(playing ? 0.015 + 0.025*smooth(0.7,1,t) : 0, now, 0.8);
   A.water.gain.setTargetAtTime(playing ? 0.045*clamp(1 - Math.abs(b.x - 1830)/450, 0, 1) : 0, now, 0.3);
-  A.rainG.gain.setTargetAtTime(playing ? 0.035*(S.rainAmt||0) : 0, now, 0.6);
   if (!playing) return;
   const sad = t > 0.78 || S.phase === 'end' || S.mood < -0.3;
   const prog = sad ? [[45,48,52],[41,45,48],[48,52,55],[44,47,52]]   // Am F C E
@@ -750,16 +749,11 @@ function update(dt){
   const ox = b.x;
   let nx = clamp(b.x + dir*175*(CREATOR && FAST ? 3 : 1)*dt, 250, l.state==='trapped' ? 2900 : 5000);
   for (const o of OBST) if (b.h < o.h - 1 && Math.abs(nx - o.x) < 46 && Math.abs(ox - o.x) >= 46) nx = ox;
-  const WL = 1774, WR = 1886;   // stream banks
-  if (b.h < 1 && nx > WL && nx < WR && (ox <= WL || ox >= WR)){
-    nx = ox;
-    if (!S.streamHinted){ S.streamHinted = true; hint("Jump to cross the stream"); }
-  }
   b.x = nx; b.t += dt;
   const floor = floorAt(b.x);
   b.vh -= 950*dt; b.h += b.vh*dt;
   if (b.h <= floor){ b.h = floor; b.vh = 0; }
-  if (b.h < 1 && b.x > WL && b.x < WR) b.x = (b.x - WL < WR - b.x) ? WL : WR;
+
   if (!S.jumpHinted && free && Math.abs(b.x - 1350) < 130){ S.jumpHinted = true; hint("Tap Jump to hop over"); }
 
   if (l.state==='follow'){
@@ -775,7 +769,6 @@ function update(dt){
   l.h = 0;
   if (l.state==='follow' || l.state==='leaving'){
     for (const o of OBST){ const d = Math.abs(l.x - o.x); if (d < 40) l.h = Math.max(l.h, (1 - d/40)*(o.h + 14)); }
-    const ds = Math.abs(l.x - 1830); if (ds < 70) l.h = Math.max(l.h, (1 - ds/70)*36);
   }
 
   // butterflies
@@ -814,11 +807,30 @@ function update(dt){
   for (const q of S.petals){ q.life += dt; q.x += (q.vx + Math.sin(q.life*2 + q.r)*20)*dt; q.y += q.vy*dt; }
   S.petals = S.petals.filter(q => q.y < H + 20 && q.x > -20);
 
-  const rainAmt = clamp((-S.mood - 0.45)/0.5, 0, 1);
-  if (rainAmt > 0){ const n = Math.round(dt*260*rainAmt + Math.random()); for (let i=0; i<n && S.rain.length < 180; i++) S.rain.push({x:Math.random()*(W+80), y:-20, v:520 + Math.random()*220}); }
-  for (const r of S.rain){ r.y += r.v*dt; r.x -= r.v*0.25*dt; }
+  // rain fades in slowly and stays light
+  const rainTarget = clamp((-S.mood - 0.5)/0.5, 0, 1);
+  S.rainS += (rainTarget - S.rainS)*Math.min(1, dt*0.25);
+  if (S.rainS > 0.02){ const n = Math.round(dt*110*S.rainS + Math.random()*0.6); for (let i=0; i<n && S.rain.length < 90; i++) S.rain.push({x:Math.random()*(W+80), y:-20, v:380 + Math.random()*140}); }
+  for (const r of S.rain){ r.y += r.v*dt; r.x -= r.v*0.18*dt; }
   S.rain = S.rain.filter(r => r.y < H + 20);
-  S.rainAmt = rainAmt;
+  S.rainAmt = S.rainS;
+
+  // droplets when walking through the stream
+  const inWater = x => Math.abs(x - 1830) < 46;
+  const splashFrom = (x, f) => { for (let i=0; i<2; i++) S.drops.push({wx:x + (Math.random()-0.5)*18, h:2, vx:(Math.random()-0.5)*70 + f*25, vh:70 + Math.random()*80}); };
+  if (b.moving && b.h < 1 && inWater(b.x) && Math.random() < dt*22) splashFrom(b.x, b.f);
+  if (l.moving && (l.h||0) < 1 && l.state==='follow' && inWater(l.x) && Math.random() < dt*16) splashFrom(l.x, l.f);
+  for (const d of S.drops){ d.vh -= 520*dt; d.h += d.vh*dt; d.wx += d.vx*dt; if (d.h <= 0){ d.dead = true; S.ripples.push({wx:d.wx, life:0}); } }
+  S.drops = S.drops.filter(d => !d.dead);
+  for (const r of S.ripples) r.life += dt;
+  S.ripples = S.ripples.filter(r => r.life < 0.8);
+
+  // the bramble rattles while Lily is stuck
+  S.bushShake *= Math.exp(-dt*3);
+  if (l.state==='trapped' && !S.rescue && Math.abs(b.x - 3000) < 650){
+    S.struggleT -= dt;
+    if (S.struggleT <= 0){ S.struggleT = 2 + Math.random()*2.5; S.bushShake = 0.7; l.shake = 3; sfx('rustleSoft'); }
+  }
 
   audioTick(dt);
 
@@ -925,21 +937,37 @@ function midTrees(GY, col){
 
 function drawBramble(sx, GY, density){
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.fillStyle = '#22301f';
-  ell(sx, GY-5, 66, 14); ell(sx-36, GY-11, 28, 13); ell(sx+36, GY-10, 27, 12);
+  const tm = performance.now()/1000, sh = S.bushShake;
+  const mg = ctx.createLinearGradient(0, GY-30, 0, GY+4);
+  mg.addColorStop(0, '#36502f'); mg.addColorStop(1, '#1d2b1b');
+  ctx.fillStyle = mg;
+  ell(sx, GY-5, 66, 14); ell(sx-36, GY-11, 28, 13); ell(sx+36, GY-10, 27, 12); ell(sx+4, GY-15, 30, 12);
   const n = Math.round(9*density) + 3;
   for (let i=0; i<n; i++){
     const x0 = sx - 56 + rnd(i+50)*112, h = 32 + rnd(i+80)*36, lean = (rnd(i+20) - 0.5)*80;
-    const cx = x0 + lean*0.25, cy = GY - h*1.15, x1 = x0 + lean, y1 = GY - h*0.5, y0 = GY - 4;
-    ctx.strokeStyle = '#3b2a24'; ctx.lineWidth = 2.4;
+    const sway = Math.sin(tm*1.3 + i)*1.6 + sh*Math.sin(tm*38 + i*1.7)*7;
+    const cx = x0 + lean*0.25 + sway*0.6, cy = GY - h*1.15, x1 = x0 + lean + sway, y1 = GY - h*0.5, y0 = GY - 4;
+    ctx.strokeStyle = '#4a3229'; ctx.lineWidth = 2.6;
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,220,200,.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y0-1); ctx.quadraticCurveTo(cx, cy-1, x1, y1-1); ctx.stroke();
     for (let j=1; j<=4; j++){
       const u = j/5, a = (1-u)*(1-u), bq = 2*(1-u)*u, c = u*u;
       const px = a*x0 + bq*cx + c*x1, py = a*y0 + bq*cy + c*y1, side = j % 2 ? 1 : -1;
-      ctx.fillStyle = '#3b2a24'; tri(px, py-1.4, px + side*5, py-4, px, py+1.4);
-      if ((i + j) % 2 === 0){ ctx.fillStyle = j % 3 ? '#3f5a32' : '#4d6b3a'; ell(px + side*6, py + 2, 5, 2.6, side*0.5); }
+      ctx.fillStyle = '#4a3229'; tri(px, py-1.3, px + side*4.5, py-3.6, px, py+1.3);
+      if ((i + j) % 2 === 0){
+        const lc = j % 3 ? '#4f7a3d' : '#64904a';
+        ctx.fillStyle = lc; ell(px + side*6, py + 2, 5.5, 2.8, side*0.5);
+        ctx.fillStyle = 'rgba(255,255,255,.12)'; ell(px + side*6, py + 1.2, 3.5, 1, side*0.5);
+      }
     }
-    if (rnd(i+300) < 0.45){ ctx.fillStyle = '#2b1834'; ell(x1, y1, 2.6, 2.6); ell(x1+3, y1+1.5, 2.2, 2.2); }
+    const k = rnd(i+300);
+    if (k < 0.35){ ctx.fillStyle = '#2b1834'; ell(x1, y1, 2.6, 2.6); ell(x1+3, y1+1.5, 2.2, 2.2); ctx.fillStyle = 'rgba(255,255,255,.35)'; ell(x1-0.8, y1-0.9, 0.8, 0.8); }
+    else if (k < 0.75){
+      ctx.fillStyle = '#f6e6ee';
+      for (let q=0; q<5; q++){ const an = q*1.2566 + i; ell(x1 + Math.cos(an)*2.6, y1 + Math.sin(an)*2.6, 2, 2); }
+      ctx.fillStyle = '#f2c14e'; ell(x1, y1, 1.3, 1.3);
+    }
   }
   ctx.restore();
 }
@@ -1029,14 +1057,31 @@ function draw(){
 
   // logs and rocks
   for (const o of OBST){
-    const px = o.x - cam; if (px < -60 || px > W+60) continue;
+    const px = o.x - cam; if (px < -70 || px > W+70) continue;
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ell(px, GY+1, 36, 4);
     if (o.k==='log'){
-      ctx.fillStyle = '#6b4a32'; ctx.fillRect(px-30, GY-o.h, 60, o.h);
-      ctx.fillStyle = '#8a6a4c'; ell(px+30, GY-o.h/2, 6, o.h/2);
-      ctx.fillStyle = '#5a3d28'; ell(px+30, GY-o.h/2, 2.5, o.h/4);
+      const top = GY - o.h, r = o.h/2;
+      const lg = ctx.createLinearGradient(0, top, 0, GY);
+      lg.addColorStop(0, '#8a6446'); lg.addColorStop(0.5, '#6e4c33'); lg.addColorStop(1, '#4e3423');
+      ctx.fillStyle = lg;
+      ctx.beginPath(); ctx.moveTo(px-30, top); ctx.lineTo(px+30, top);
+      ctx.arc(px+30, top + r, r, -Math.PI/2, Math.PI/2); ctx.lineTo(px-30, GY);
+      ctx.arc(px-30, top + r, r, Math.PI/2, Math.PI*1.5); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,25,15,.35)'; ctx.lineWidth = 1.2;
+      for (let k=0; k<3; k++){ ctx.beginPath(); ctx.moveTo(px-26 + k*6, top + 5 + k*5); ctx.quadraticCurveTo(px, top + 3 + k*5, px+22 - k*4, top + 6 + k*5); ctx.stroke(); }
+      ctx.fillStyle = '#c9a57c'; ell(px+30, top + r, r*0.55, r*0.92);
+      ctx.strokeStyle = 'rgba(110,75,45,.6)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(px+30, top + r, r*0.3, r*0.55, 0, 0, Math.PI*2); ctx.stroke();
+      ctx.fillStyle = '#6f9a4b'; ell(px-8, top + 1, 14, 3.2); ell(px+6, top + 1.5, 8, 2.5);
     } else {
-      ctx.fillStyle = '#7d7a78'; ell(px, GY-o.h/2+2, 30, o.h/2+2);
-      ctx.fillStyle = '#95918d'; ell(px-6, GY-o.h+6, 14, 6);
+      const rg = ctx.createRadialGradient(px-8, GY - o.h + 6, 2, px, GY - o.h/2, 34);
+      rg.addColorStop(0, '#b3aea8'); rg.addColorStop(1, '#6d6964');
+      ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.moveTo(px-30, GY);
+      ctx.bezierCurveTo(px-32, GY - o.h*0.9, px-12, GY - o.h - 4, px+4, GY - o.h);
+      ctx.bezierCurveTo(px+24, GY - o.h + 2, px+33, GY - o.h*0.5, px+29, GY);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#6f9a4b'; ell(px-6, GY - o.h + 2, 12, 3);
     }
   }
 
@@ -1051,6 +1096,15 @@ function draw(){
   }
   drawDog(bx, GY+2 - S.buck.h, 0.72, S.buck.f, S.buck.t, S.buck.moving, BUCK);
   if (l.state==='follow' || l.state==='leaving') drawFox(l, l.x - cam, GY+4 - (l.h||0));
+
+  // stream droplets and ripples
+  for (const r of S.ripples){
+    const px = r.wx - cam, k = r.life/0.8;
+    ctx.strokeStyle = `rgba(220,240,255,${0.5*(1-k)})`; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(px, GY + 13, 3 + k*10, 1 + k*2.5, 0, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(215,238,255,.85)';
+  for (const d of S.drops) ell(d.wx - cam, GY + 10 - d.h, 1.6, 2);
 
   // glow in the speaker's color
   if (S.dlg){
@@ -1140,8 +1194,8 @@ function draw(){
 
   // rain on the saddest parts
   if (S.rain.length){
-    ctx.strokeStyle = 'rgba(190,205,240,.38)'; ctx.lineWidth = 1.2;
-    for (const r of S.rain) seg(r.x, r.y, r.x - 4, r.y + 15);
+    ctx.strokeStyle = `rgba(200,212,240,${0.12 + 0.12*S.rainS})`; ctx.lineWidth = 1;
+    for (const r of S.rain) seg(r.x, r.y, r.x - 3, r.y + 11);
   }
   // falling petals on the happy parts
   for (const q of S.petals){
